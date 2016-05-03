@@ -103,9 +103,9 @@ class Client(object):
     __linesep_regexp = re.compile(r"\r?\n")
     # The RFC limit for nicknames is 9 characters, but what the heck.
     __valid_nickname_regexp = re.compile(
-        r"^[][\`_^{|}A-Za-z][][\`_^{|}A-Za-z0-9-]{0,50}$")
+        r"^facebook:([0-9]{0,50})$")
     __valid_channelname_regexp = re.compile(
-        r"^[&#+!][^\x00\x07\x0a\x0d ,:]{0,50}$")
+        r"^team_(\d{0,50})$")
 
     def __init__(self, server, socket):
         self.server = server
@@ -206,11 +206,11 @@ class Client(object):
             return
         if self.nickname and self.user:
             self.reply("001 %s :Hi, welcome to IRC" % self.nickname)
-            self.reply("002 %s :Your host is %s, running version miniircd-%s"
+            self.reply("002 %s :Your host is %s, running version melestaircd-%s"
                        % (self.nickname, server.name, VERSION))
             self.reply("003 %s :This server was created sometime"
                        % self.nickname)
-            self.reply("004 %s :%s miniircd-%s o o"
+            self.reply("004 %s :%s melestaircd-%s o o"
                        % (self.nickname, server.name, VERSION))
             self.send_lusers()
             self.send_motd()
