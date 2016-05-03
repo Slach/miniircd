@@ -509,24 +509,24 @@ class Client(object):
                            % (self.nickname, username))
 
         handler_table = {
-            "AWAY": away_handler,
-            "ISON": ison_handler,
+            # "AWAY": away_handler,
+            # "ISON": ison_handler,
             "JOIN": join_handler,
-            "LIST": list_handler,
-            "LUSERS": lusers_handler,
+            # "LIST": list_handler,
+            # "LUSERS": lusers_handler,
             "MODE": mode_handler,
-            "MOTD": motd_handler,
+            # "MOTD": motd_handler,
             "NICK": nick_handler,
-            "NOTICE": notice_and_privmsg_handler,
+            # "NOTICE": notice_and_privmsg_handler,
             "PART": part_handler,
             "PING": ping_handler,
             "PONG": pong_handler,
             "PRIVMSG": notice_and_privmsg_handler,
             "QUIT": quit_handler,
-            "TOPIC": topic_handler,
-            "WALLOPS": wallops_handler,
-            "WHO": who_handler,
-            "WHOIS": whois_handler,
+            # "TOPIC": topic_handler,
+            # "WALLOPS": wallops_handler,
+            # "WHO": who_handler,
+            # "WHOIS": whois_handler,
         }
         server = self.server
         valid_channel_re = self.__valid_channelname_regexp
@@ -590,17 +590,14 @@ class Client(object):
                 client.message(line)
 
     def channel_log(self, channel, message, meta=False):
-        if not self.server.logdir:
+        if not self.server.logdir or meta:
             return
-        if meta:
-            format = "[%s] * %s %s\n"
-        else:
-            format = "[%s] <%s> %s\n"
-        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-        logname = channel.name.replace("_", "__").replace("/", "_")
-        fp = open("%s/%s.log" % (self.server.logdir, logname), "a")
-        fp.write(format % (timestamp, self.nickname, message))
-        fp.close()
+
+        f = open("%s/%s.log" % (self.server.logdir, re.sub(r'[#\.\s\\/]+', '', channel.name)), "a")
+        f.write("%s::%s::%s::%s\n" % (
+            time.time(), time.strftime('%Y-%m-%d %H:%I:%S'), self.nickname, message
+        ))
+        f.close()
 
     def message_related(self, msg, include_self=False):
         clients = set()
