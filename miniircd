@@ -595,7 +595,7 @@ class Client(object):
 
         f = open("%s/%s.log" % (self.server.logdir, re.sub(r'[#\.\s\\/]+', '', channel.name)), "a")
         f.write("%s::%s::%s::%s\n" % (
-            time.time(), time.strftime('%Y-%m-%d %H:%I:%S'), self.nickname, message
+            time.time(), time.strftime('%Y-%m-%d %H:%M:%S'), self.nickname, message
         ))
         f.close()
 
