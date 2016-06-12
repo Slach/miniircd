@@ -84,7 +84,7 @@ class Channel(object):
         if not (self._state_path and os.path.exists(self._state_path)):
             return
         data = {}
-        exec(open(self._state_path), {}, data)
+        exec (open(self._state_path), {}, data)
         self._topic = data.get("topic", "")
         self._key = data.get("key")
 
@@ -126,6 +126,7 @@ class Client(object):
 
     def get_prefix(self):
         return "%s!%s@%s" % (self.nickname, self.user, self.host)
+
     prefix = property(get_prefix)
 
     def check_aliveness(self):
@@ -601,7 +602,7 @@ class Client(object):
             nickname=self.nickname,
             message=message
         )
-        f.write(msg+'\n')
+        f.write(msg + '\n')
         f.close()
 
     def message_related(self, msg, include_self=False):
@@ -671,7 +672,7 @@ class Server(object):
 
         port = int(port)
         prefix = 'miniircd.%s.%s' % (
-            self.name.split('.')[0], '-'.join(map(str,self.ports))
+            self.name.split('.')[0], '-'.join(map(str, self.ports))
         )
         self.statsd = statsd.StatsClient(host, port, prefix)
 
@@ -762,7 +763,7 @@ class Server(object):
             client.channel_log(x, "quit (%s)" % quitmsg, meta=True)
             x.remove_client(client)
         if client.nickname \
-                and irc_lower(client.nickname) in self.nicknames:
+            and irc_lower(client.nickname) in self.nicknames:
             del self.nicknames[irc_lower(client.nickname)]
         del self.clients[client.socket]
 
@@ -828,7 +829,7 @@ class Server(object):
                     try:
                         self.clients[conn] = Client(self, conn)
                         self.print_info("Accepted connection from %s:%s." % (
-                                addr[0], addr[1]
+                            addr[0], addr[1]
                         ))
                         if self.statsd:
                             self.statsd.incr('socket_accept', 1)
@@ -847,6 +848,7 @@ class Server(object):
                 for client in self.clients.values():
                     client.check_aliveness()
                 last_aliveness_check = now
+
 
 _maketrans = str.maketrans if sys.version_info[0] == 3 else string.maketrans
 _ircstring_translation = _maketrans(
