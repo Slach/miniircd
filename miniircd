@@ -595,13 +595,13 @@ class Client(object):
         log_file = re.sub(r'[#\.\s\\/]+', '', channel.name)
         log_file = "%s/%s.log" % (self.server.logdir, log_file)
         f = open(log_file, "a")
-
-        f.write(self.server.logformat.format(
-            timestmap=time.time(),
+        msg = self.server.logformat.format(
+            timestamp=time.time(),
             full_time=time.strftime('%Y-%m-%d %H:%M:%S'),
             nickname=self.nickname,
             message=message
-        ))
+        )
+        f.write(msg+'\n')
         f.close()
 
     def message_related(self, msg, include_self=False):
