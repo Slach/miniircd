@@ -660,15 +660,20 @@ class Server(object):
         server_name_limit = 63  # From the RFC.
         self.name = socket.getfqdn(self.address)[:server_name_limit]
 
+        host = 'localhost'
+        port = 8125
         if options.statsd:
-            prefix = 'miniircd.%s.%s' % (
-                self.name.split('.')[0], '-'.join(self.ports)
-            )
             if ':' in options.statsd:
                 (host, port) = options.statsd.split(':')
-                self.statsd = statsd.StatsClient(host, port, prefix)
             else:
-                self.statsd = statsd.StatsClient(options.statsd, prefix=prefix)
+                host = options.statsd
+                port = 8125
+
+        port = int(port)
+        prefix = 'miniircd.%s.%s' % (
+            self.name.split('.')[0], '-'.join(self.ports)
+        )
+        self.statsd = statsd.StatsClient(host, port, prefix)
 
         if options.logformat:
             self.logformat = options.logformat
@@ -789,7 +794,8 @@ class Server(object):
                             % (self.setuid[0], self.setuid[1]))
         last_aliveness_check = time.time()
         while True:
-            self.statsd.gauge('clients', len(self.clients))
+            if self.statsd:
+                self.statsd.gauge('clients', len(self.clients))
             (iwtd, owtd, ewtd) = select.select(
                 serversockets + [x.socket for x in self.clients.values()],
                 [x.socket for x in self.clients.values()
@@ -808,9 +814,11 @@ class Server(object):
                                 server_side=True,
                                 certfile=self.ssl_pem_file,
                                 keyfile=self.ssl_pem_file)
-                            self.statsd.incr('ssl_accept', 1)
+                            if self.statsd:
+                                self.statsd.incr('ssl_accept', 1)
                         except self.ssl.SSLError as e:
-                            self.statsd.incr('ssl_errors', 1)
+                            if self.statsd:
+                                self.statsd.incr('ssl_errors', 1)
                             self.print_error(
                                 "SSL error for connection %s:%s: %s" % (
                                     addr[0], addr[1], e
@@ -822,9 +830,11 @@ class Server(object):
                         self.print_info("Accepted connection from %s:%s." % (
                                 addr[0], addr[1]
                         ))
-                        self.statsd.incr('socket_accept', 1)
+                        if self.statsd:
+                            self.statsd.incr('socket_accept', 1)
                     except socket.error as e:
-                        self.statsd.incr('socket_errors', 1)
+                        if self.statsd:
+                            self.statsd.incr('socket_errors', 1)
                         try:
                             conn.close()
                         except:
