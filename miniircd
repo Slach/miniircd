@@ -762,8 +762,7 @@ class Server(object):
         for x in client.channels.values():
             client.channel_log(x, "quit (%s)" % quitmsg, meta=True)
             x.remove_client(client)
-        if client.nickname \
-            and irc_lower(client.nickname) in self.nicknames:
+        if client.nickname and irc_lower(client.nickname) in self.nicknames:
             del self.nicknames[irc_lower(client.nickname)]
         del self.clients[client.socket]
 
@@ -954,11 +953,14 @@ def main(argv):
         else:
             op.error("Specify a user, or user and group separated by a colon,"
                      " e.g. --setuid daemon, --setuid nobody:nobody")
-    if os.name == "posix" and (os.getuid() == 0 or os.getgid() == 0) and not options.setuid:
-        op.error("Running this service as root is not recommended. Use the"
-                 " --setuid option to switch to an unprivileged account after"
-                 " startup. If you really intend to run as root, use"
-                 " \"--setuid root\".")
+    if os.name == "posix" and (0 in (os.getuid(), os.getgid())):
+        if not options.setuid:
+            op.error(
+                "Running this service as root is not recommended. Use the"
+                " --setuid option to switch to an unprivileged account after"
+                " startup. If you really intend to run as root, use"
+                " \"--setuid root\"."
+            )
 
     ports = []
     for port in re.split(r"[,\s]+", options.ports):
