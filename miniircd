@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 # Hey, Emacs! This is -*-python-*-.
 #
-# Copyright (C) 2003-2016 Joel Rosdahl
+# Copyright (C) 2003-2016 Joel Rosdahl, Eugene Klimov
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
 # USA
 #
-# Joel Rosdahl <joel@rosdahl.net>
+# Joel Rosdahl <joel@rosdahl.net>, Eugene Klimov <bloodjazman@gmail.com>
 
 import os
 import re
@@ -28,10 +28,10 @@ import string
 import sys
 import tempfile
 import time
-from datetime import datetime
+import statsd
 from optparse import OptionParser
 
-VERSION = "1.1"
+VERSION = "1.1-melesta"
 
 
 def create_directory(path):
@@ -107,14 +107,14 @@ class Client(object):
     __valid_channelname_regexp = re.compile(
         r"^#team_(\d{0,50})$")
 
-    def __init__(self, server, socket):
+    def __init__(self, server, client_socket):
         self.server = server
-        self.socket = socket
+        self.socket = client_socket
         self.channels = {}  # irc_lower(Channel name) --> Channel
         self.nickname = None
         self.user = None
         self.realname = None
-        (self.host, self.port) = socket.getpeername()
+        (self.host, self.port) = client_socket.getpeername()
         self.__timestamp = time.time()
         self.__readbuffer = ""
         self.__writebuffer = ""
@@ -206,7 +206,7 @@ class Client(object):
             return
         if self.nickname and self.user:
             self.reply("001 %s :Hi, welcome to IRC" % self.nickname)
-            self.reply("002 %s :Your host is %s, running version melestaircd-%s"
+            self.reply("002 %s :Your host is %s, running melestaircd-%s"
                        % (self.nickname, server.name, VERSION))
             self.reply("003 %s :This server was created sometime"
                        % self.nickname)
@@ -592,10 +592,15 @@ class Client(object):
     def channel_log(self, channel, message, meta=False):
         if not self.server.logdir or meta:
             return
+        log_file = re.sub(r'[#\.\s\\/]+', '', channel.name)
+        log_file = "%s/%s.log" % (self.server.logdir, log_file)
+        f = open(log_file, "a")
 
-        f = open("%s/%s.log" % (self.server.logdir, re.sub(r'[#\.\s\\/]+', '', channel.name)), "a")
-        f.write("%s::%s::%s::%s\n" % (
-            time.time(), time.strftime('%Y-%m-%d %H:%M:%S'), self.nickname, message
+        f.write(self.server.logformat.format(
+            timestmap=time.time(),
+            full_time=time.strftime('%Y-%m-%d %H:%M:%S'),
+            nickname=self.nickname,
+            message=message
         ))
         f.close()
 
@@ -654,6 +659,21 @@ class Server(object):
             self.address = ""
         server_name_limit = 63  # From the RFC.
         self.name = socket.getfqdn(self.address)[:server_name_limit]
+
+        if options.statsd:
+            prefix = 'miniircd.%s.%s' % (
+                self.name.split('.')[0], '-'.join(self.ports)
+            )
+            if ':' in options.statsd:
+                (host, port) = options.statsd.split(':')
+                self.statsd = statsd.StatsClient(host, port, prefix)
+            else:
+                self.statsd = statsd.StatsClient(options.statsd, prefix=prefix)
+
+        if options.logformat:
+            self.logformat = options.logformat
+        else:
+            self.logformat = '{timestamp}::{full_time}::{nickname}::{message}'
 
         self.channels = {}  # irc_lower(Channel name) --> Channel instance.
         self.clients = {}  # Socket --> Client instance.
@@ -769,6 +789,7 @@ class Server(object):
                             % (self.setuid[0], self.setuid[1]))
         last_aliveness_check = time.time()
         while True:
+            self.statsd.gauge('clients', len(self.clients))
             (iwtd, owtd, ewtd) = select.select(
                 serversockets + [x.socket for x in self.clients.values()],
                 [x.socket for x in self.clients.values()
@@ -787,16 +808,23 @@ class Server(object):
                                 server_side=True,
                                 certfile=self.ssl_pem_file,
                                 keyfile=self.ssl_pem_file)
+                            self.statsd.incr('ssl_accept', 1)
                         except self.ssl.SSLError as e:
+                            self.statsd.incr('ssl_errors', 1)
                             self.print_error(
-                                "SSL error for connection from %s:%s: %s" % (
-                                    addr[0], addr[1], e))
+                                "SSL error for connection %s:%s: %s" % (
+                                    addr[0], addr[1], e
+                                )
+                            )
                             continue
                     try:
                         self.clients[conn] = Client(self, conn)
                         self.print_info("Accepted connection from %s:%s." % (
-                            addr[0], addr[1]))
+                                addr[0], addr[1]
+                        ))
+                        self.statsd.incr('socket_accept', 1)
                     except socket.error as e:
+                        self.statsd.incr('socket_errors', 1)
                         try:
                             conn.close()
                         except:
@@ -841,6 +869,10 @@ def main(argv):
         metavar="X",
         help="store channel log in directory X")
     op.add_option(
+        "--logformat",
+        metavar="X",
+        help="default {timestamp}::{full_time}::{nickname}::{message}")
+    op.add_option(
         "--motd",
         metavar="X",
         help="display file X as message of the day")
@@ -861,6 +893,10 @@ def main(argv):
         "--statedir",
         metavar="X",
         help="save persistent channel state (topic, key) in directory X")
+    op.add_option(
+        "--statsd",
+        metavar="X",
+        help="statsd <server:port> for metrics collecting")
     op.add_option(
         "--verbose",
         action="store_true",
