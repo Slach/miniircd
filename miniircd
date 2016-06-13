@@ -33,7 +33,7 @@ import netifaces
 from platform import platform
 from optparse import OptionParser
 
-VERSION = "1.1-melesta"
+VERSION = "1.2"
 
 
 def create_directory(path):
@@ -213,7 +213,7 @@ class Client(object):
                        % (self.nickname, server.name, VERSION))
             self.reply("003 %s :This server was created sometime"
                        % self.nickname)
-            self.reply("004 %s :%s melestaircd-%s o o"
+            self.reply("004 %s :%s melestaircd-%s =^.^="
                        % (self.nickname, server.name, VERSION))
             self.send_lusers()
             self.send_motd()
