@@ -22,13 +22,14 @@
 
 import os
 import re
+import sys
+import time
 import select
 import socket
 import string
-import sys
-import tempfile
-import time
 import statsd
+import tempfile
+from platform import platform
 from optparse import OptionParser
 
 VERSION = "1.1-melesta"
@@ -683,11 +684,16 @@ class Server(object):
 
         self.channels = {}  # irc_lower(Channel name) --> Channel instance.
         self.clients = {}  # Socket --> Client instance.
+        self.clients_epoll = {} # Socket Descriptor -> Client instance
+
         self.nicknames = {}  # irc_lower(Nickname) --> Client instance.
         if self.logdir:
             create_directory(self.logdir)
         if self.statedir:
             create_directory(self.statedir)
+        self.serversockets = []
+        self.serversockets_epoll = []
+        self.epoll=None
 
     def daemonize(self):
         try:
@@ -769,18 +775,128 @@ class Server(object):
     def remove_channel(self, channel):
         del self.channels[irc_lower(channel.name)]
 
+    def accept_ssl_conn(self, conn, addr):
+        try:
+            conn = self.ssl.wrap_socket(
+                conn,
+                server_side=True,
+                certfile=self.ssl_pem_file,
+                keyfile=self.ssl_pem_file
+            )
+            if self.statsd:
+                self.statsd.incr('ssl_accept', 1)
+            return conn
+        except self.ssl.SSLError as e:
+            if self.statsd:
+                self.statsd.incr('ssl_errors', 1)
+            self.print_error(
+                "SSL error for connection %s:%s: %s" % (
+                    addr[0], addr[1], e
+                )
+            )
+            return None
+
+    def create_new_client(self, addr, conn):
+        try:
+            if self.epoll:
+                self.clients[conn.fileno()] = Client(self, conn)
+            else:
+                self.clients[conn] = Client(self, conn)
+            self.print_info("Accepted connection from %s:%s." % (
+                addr[0], addr[1]
+            ))
+            if self.statsd:
+                self.statsd.incr('socket_accept', 1)
+                self.statsd.gauge('clients', len(self.clients))
+            return True
+        except socket.error as e:
+            try:
+                conn.close()
+            except:
+                pass
+            if self.statsd:
+                self.statsd.incr('socket_errors', 1)
+                self.statsd.gauge('clients', len(self.clients))
+            return False
+
+    def poller_epoll(self):
+        events = self.epoll.poll(timeout=10)
+        for x, event in events:
+            self.print_debug('x=%s event=%x' % (x, event))
+            if x in self.serversockets_epoll:
+                (conn, addr) = self.serversockets_epoll[x].accept()
+                conn.setblocking(0)
+
+                if self.ssl_pem_file:
+                    conn = self.accept_ssl_conn(conn, addr)
+                    if conn is None:
+                        continue
+                self.print_debug('x in serversockets, conn=%s addr=%s' % (conn, addr))
+                if self.create_new_client(addr, conn):
+                    self.epoll.register(conn.fileno(), select.EPOLLIN | select.EPOLLET)
+            elif x in self.clients:
+                self.print_debug('x in self.clients')
+                if event & select.EPOLLIN:
+                    self.clients[x].socket_readable_notification()
+                    self.epoll.modify(x, select.EPOLLOUT | select.EPOLLET)
+                elif event & select.EPOLLOUT:
+                    self.clients[x].socket_writable_notification()
+                    self.epoll.modify(x, select.EPOLLIN | select.EPOLLET)
+                elif event & select.EPOLLHUP:
+                    self.epoll.unregister(x)
+                    self.clients[x].disconnect("ping timeout")
+                    del self.clients[x]
+            else:
+                raise RuntimeError('file descriptor %s not found in epoll list' % x)
+
+    def poller_select(self):
+        (iwtd, owtd, ewtd) = select.select(
+            self.serversockets + [x.socket for x in self.clients.values()],
+            [x.socket for x in self.clients.values() if x.write_queue_size() > 0],
+            [],
+            10
+        )
+        for x in iwtd:
+            if x in self.clients:
+                self.clients[x].socket_readable_notification()
+            else:
+                (conn, addr) = x.accept()
+                if self.ssl_pem_file:
+                    conn = self.accept_ssl_conn(conn, addr)
+                    if conn is None:
+                        continue
+                self.create_new_client(addr, conn)
+
+        for x in owtd:
+            # client may have been disconnected
+            if x in self.clients:
+                self.clients[x].socket_writable_notification()
+
+
     def start(self):
-        serversockets = []
+        self.serversockets = []
+        self.serversockets_epoll = {}
+        if 'linux' in platform().lower():
+            poller = self.poller_epoll
+            self.epoll = select.epoll()
+        else:
+            poller = self.poller_select
+
         for port in self.ports:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 s.bind((self.address, port))
-            except socket.error as e:
-                self.print_error("Could not bind port %s: %s." % (port, e))
+                s.listen(5)
+                self.serversockets.append(s)
+
+                if self.epoll:
+                    s.setblocking(0)
+                    self.epoll.register(s.fileno(), select.EPOLLIN)
+                    self.serversockets_epoll.update({s.fileno(): s})
+            except Exception as e:
+                self.print_error("Could not bind socket on port %s: %s." % (port, e))
                 sys.exit(1)
-            s.listen(5)
-            serversockets.append(s)
             del s
             self.print_info("Listening on port %d." % port)
         if self.chroot:
@@ -790,69 +906,39 @@ class Server(object):
         if self.setuid:
             os.setgid(self.setuid[1])
             os.setuid(self.setuid[0])
-            self.print_info("Setting uid:gid to %s:%s"
-                            % (self.setuid[0], self.setuid[1]))
+            self.print_info("Setting uid:gid to %s:%s" % (
+                self.setuid[0], self.setuid[1]
+            ))
+
+
         last_aliveness_check = time.time()
-        while True:
-            if self.statsd:
-                self.statsd.gauge('clients', len(self.clients))
-            (iwtd, owtd, ewtd) = select.select(
-                serversockets + [x.socket for x in self.clients.values()],
-                [x.socket for x in self.clients.values()
-                 if x.write_queue_size() > 0],
-                [],
-                10)
-            for x in iwtd:
-                if x in self.clients:
-                    self.clients[x].socket_readable_notification()
-                else:
-                    (conn, addr) = x.accept()
-                    if self.ssl_pem_file:
-                        try:
-                            conn = self.ssl.wrap_socket(
-                                conn,
-                                server_side=True,
-                                certfile=self.ssl_pem_file,
-                                keyfile=self.ssl_pem_file)
-                            if self.statsd:
-                                self.statsd.incr('ssl_accept', 1)
-                        except self.ssl.SSLError as e:
-                            if self.statsd:
-                                self.statsd.incr('ssl_errors', 1)
-                            self.print_error(
-                                "SSL error for connection %s:%s: %s" % (
-                                    addr[0], addr[1], e
-                                )
-                            )
-                            continue
-                    try:
-                        self.clients[conn] = Client(self, conn)
-                        self.print_info("Accepted connection from %s:%s." % (
-                            addr[0], addr[1]
-                        ))
-                        if self.statsd:
-                            self.statsd.incr('socket_accept', 1)
-                    except socket.error as e:
-                        if self.statsd:
-                            self.statsd.incr('socket_errors', 1)
-                        try:
-                            conn.close()
-                        except:
-                            pass
-            for x in owtd:
-                if x in self.clients:  # client may have been disconnected
-                    self.clients[x].socket_writable_notification()
-            now = time.time()
-            if last_aliveness_check + 10 < now:
-                for client in self.clients.values():
-                    client.check_aliveness()
-                last_aliveness_check = now
+        try:
+            while True:
+                poller()
+                now = time.time()
+                # send clients only one time per 30 sec
+                if int(now) % 30 == 0:
+                    self.statsd.gauge('clients', len(self.clients))
+
+                if last_aliveness_check + 10 < now:
+                    for client in self.clients.values():
+                        client.check_aliveness()
+                    last_aliveness_check = now
+        finally:
+            if self.epoll:
+                for s in self.serversockets:
+                    self.epoll.unregister(s.fileno())
+                self.epoll.close()
+                for s in self.serversockets:
+                    s.close()
+                    del s
 
 
 _maketrans = str.maketrans if sys.version_info[0] == 3 else string.maketrans
 _ircstring_translation = _maketrans(
     string.ascii_lowercase.upper() + "[]\\^",
-    string.ascii_lowercase + "{}|~")
+    string.ascii_lowercase + "{}|~"
+)
 
 
 def irc_lower(s):
