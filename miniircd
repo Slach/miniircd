@@ -846,14 +846,19 @@ class Server(object):
                 self.print_debug('x in self.clients')
                 if event & select.EPOLLIN:
                     self.clients[x].socket_readable_notification()
-                    self.epoll.modify(x, select.EPOLLOUT | select.EPOLLET)
+                    if x in self.clients:
+                        self.epoll.modify(x, select.EPOLLOUT | select.EPOLLET)
+                    else:
+                        self.epoll.unregister(x)
                 elif event & select.EPOLLOUT:
                     self.clients[x].socket_writable_notification()
-                    self.epoll.modify(x, select.EPOLLIN | select.EPOLLET)
+                    if x in self.clients:
+                        self.epoll.modify(x, select.EPOLLIN | select.EPOLLET)
+                    else:
+                        self.epoll.unregister(x)
                 elif event & select.EPOLLHUP:
-                    self.epoll.unregister(x)
                     self.clients[x].disconnect("ping timeout")
-                    del self.clients[x]
+                    self.epoll.unregister(x)
             else:
                 raise RuntimeError('file descriptor %s not found in epoll list' % x)
 
