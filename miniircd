@@ -29,6 +29,7 @@ import socket
 import string
 import statsd
 import tempfile
+import netifaces
 from platform import platform
 from optparse import OptionParser
 
@@ -656,7 +657,12 @@ class Server(object):
         # else: might exist in the chroot jail, so just continue
 
         if options.listen:
-            self.address = socket.gethostbyname(options.listen)
+            if '_' == options.listen[0] and '_' == options.listen[-1]:
+                iface, type = options.listen.replace('_','').split(':',1)
+                type = netifaces.AF_INET6 if type=='ipv6' else netifaces.AF_INET
+                self.address = netifaces.ifaddresses(iface)[type][0]['addr']
+            else:
+                self.address = socket.gethostbyname(options.listen)
         else:
             self.address = ""
         server_name_limit = 63  # From the RFC.
