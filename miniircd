@@ -690,7 +690,6 @@ class Server(object):
 
         self.channels = {}  # irc_lower(Channel name) --> Channel instance.
         self.clients = {}  # Socket --> Client instance.
-        self.clients_epoll = {} # Socket Descriptor -> Client instance
 
         self.nicknames = {}  # irc_lower(Nickname) --> Client instance.
         if self.logdir:
@@ -776,7 +775,10 @@ class Server(object):
             x.remove_client(client)
         if client.nickname and irc_lower(client.nickname) in self.nicknames:
             del self.nicknames[irc_lower(client.nickname)]
-        del self.clients[client.socket]
+        if self.epoll:
+            del self.clients[client.socket.fileno()]
+        else:
+            del self.clients[client.socket]
 
     def remove_channel(self, channel):
         del self.channels[irc_lower(channel.name)]
