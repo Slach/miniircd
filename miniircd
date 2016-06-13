@@ -567,11 +567,11 @@ class Client(object):
 
     def disconnect(self, quitmsg):
         self.message("ERROR :%s" % quitmsg)
-        self.server.print_info(
-            "Disconnected connection from %s:%s (%s)." % (
-                self.host, self.port, quitmsg))
-        self.socket.close()
+        self.server.print_info("Disconnected connection from %s:%s (%s)." % (
+            self.host, self.port, quitmsg
+        ))
         self.server.remove_client(self, quitmsg)
+        self.socket.close()
 
     def message(self, msg):
         self.__writebuffer += msg + "\r\n"
