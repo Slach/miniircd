@@ -32,6 +32,7 @@ import tempfile
 import netifaces
 from platform import platform
 from optparse import OptionParser
+from pympler import tracker
 
 VERSION = "1.2"
 
@@ -925,9 +926,12 @@ class Server(object):
 
 
         last_aliveness_check = time.time()
+        tr = None if not self.debug else tracker.SummaryTracker()
         try:
             while True:
                 poller()
+                if self.debug:
+                    tr.print_diff()
                 now = time.time()
                 # send clients only one time per 30 sec
                 if int(now) % 30 == 0:
@@ -1038,8 +1042,11 @@ def main(argv):
         if os.getuid() != 0:
             op.error("Must be root to use --chroot")
     if os.name == "posix" and options.setuid:
-        from pwd import getpwnam
-        from grp import getgrnam
+        try:
+            from pwd import getpwnam
+            from grp import getgrnam
+        except ImportError:
+            sys.exit(1)
         if os.getuid() != 0:
             op.error("Must be root to use --setuid")
         matches = options.setuid.split(":")
