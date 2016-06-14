@@ -22,6 +22,7 @@
 
 import os
 import re
+import gc
 import sys
 import time
 import select
@@ -778,8 +779,10 @@ class Server(object):
             del self.nicknames[irc_lower(client.nickname)]
         if self.epoll:
             del self.clients[client.socket.fileno()]
+            gc.collect()
         else:
             del self.clients[client.socket]
+            gc.collect()
 
     def remove_channel(self, channel):
         del self.channels[irc_lower(channel.name)]
