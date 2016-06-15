@@ -660,9 +660,9 @@ class Server(object):
 
         if options.listen:
             if '_' == options.listen[0] and '_' == options.listen[-1]:
-                iface, type = options.listen.replace('_','').split(':',1)
-                type = netifaces.AF_INET6 if type=='ipv6' else netifaces.AF_INET
-                self.address = netifaces.ifaddresses(iface)[type][0]['addr']
+                iface, proto = options.listen.replace('_','').split(':',1)
+                proto = netifaces.AF_INET6 if proto=='ipv6' else netifaces.AF_INET
+                self.address = netifaces.ifaddresses(iface)[proto][0]['addr']
             else:
                 self.address = socket.gethostbyname(options.listen)
         else:
@@ -681,7 +681,7 @@ class Server(object):
 
         port = int(port)
         prefix = 'miniircd.%s.%s' % (
-            self.name.split('.')[0], '-'.join(map(str, self.ports))
+            self.name.split('.', 1)[0], '-'.join(map(str, self.ports))
         )
         self.statsd = statsd.StatsClient(host, port, prefix)
 
