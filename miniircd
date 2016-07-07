@@ -537,8 +537,10 @@ class Client(object):
         valid_channel_re = self.__valid_channelname_regexp
         try:
             handler_table[command]()
+            self.server.statsd.incr('commands')
         except KeyError:
             self.reply("421 %s %s :Unknown command" % (self.nickname, command))
+            self.server.statsd.incr('unknown_commands')
 
     def socket_readable_notification(self):
         try:
