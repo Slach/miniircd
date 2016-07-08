@@ -540,7 +540,7 @@ class Client(object):
             self.server.statsd.incr('commands_%s' % command.lower())
         except KeyError:
             self.reply("421 %s %s :Unknown command" % (self.nickname, command))
-            self.server.statsd.incr('unknown_commands_%s' % command.lower())
+            self.server.statsd.incr('unknown_commands')
 
     def socket_readable_notification(self):
         try:
