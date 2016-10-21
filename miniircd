@@ -24,6 +24,7 @@ import os
 import re
 import gc
 import sys
+import zlib
 import time
 import select
 import socket
@@ -35,7 +36,7 @@ from platform import platform
 from optparse import OptionParser
 from pympler import tracker
 
-VERSION = "1.2"
+VERSION = "1.3-%s" % zlib.crc32(open('miniircd','rb').read())
 
 
 def create_directory(path):
