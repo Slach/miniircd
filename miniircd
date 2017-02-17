@@ -835,7 +835,7 @@ class Server(object):
             return False
 
     def poller_epoll(self):
-        events = self.epoll.poll(timeout=10)
+        events = self.epoll.poll(timeout=0.01)
         for x, event in events:
             self.print_debug('x=%s event=%x' % (x, event))
             if x in self.serversockets_epoll:
@@ -935,7 +935,10 @@ class Server(object):
         tr = None if not self.debug else tracker.SummaryTracker()
         try:
             while True:
-                poller()
+                try:
+                    poller()
+                except IOError:
+                    pass
                 if self.debug:
                     tr.print_diff()
                 now = time.time()
