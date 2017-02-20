@@ -38,10 +38,18 @@ from pympler import tracker
 
 VERSION = "1.3-%s" % zlib.crc32(open('miniircd','rb').read())
 
+VALID_CHANNEL_NAME_REGEXP = re.compile(r"^#team_(\d{0,50})$")
+
 
 def create_directory(path):
     if not os.path.isdir(path):
         os.makedirs(path)
+
+
+def get_channel_logdir(base_dir, channel_name):
+    channel_num = int(VALID_CHANNEL_NAME_REGEXP.match(channel_name).group(1))
+    channel_dirs = (str(channel_num % 1000).zfill(4), str(channel_num % 4).zfill(2))
+    return os.path.join(base_dir, *channel_dirs)
 
 
 class Channel(object):
@@ -58,6 +66,9 @@ class Channel(object):
             self._read_state()
         else:
             self._state_path = None
+
+        self.logdir = get_channel_logdir(server.logdir, self.name)
+        create_directory(self.logdir)
 
     def add_member(self, client):
         self.members.add(client)
@@ -109,8 +120,7 @@ class Client(object):
     # The RFC limit for nicknames is 9 characters, but what the heck.
     __valid_nickname_regexp = re.compile(
         r"^(facebook|Melesta):([0-9]{0,50})$")
-    __valid_channelname_regexp = re.compile(
-        r"^#team_(\d{0,50})$")
+    __valid_channelname_regexp = VALID_CHANNEL_NAME_REGEXP
 
     def __init__(self, server, client_socket):
         self.server = server
@@ -601,7 +611,7 @@ class Client(object):
         if not self.server.logdir or meta:
             return
         log_file = re.sub(r'[#\.\s\\/]+', '', channel.name)
-        log_file = "%s/%s.log" % (self.server.logdir, log_file)
+        log_file = "%s/%s.log" % (channel.logdir, log_file)
         f = open(log_file, "a")
         msg = self.server.logformat.format(
             timestamp=time.time(),
