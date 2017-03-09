@@ -925,7 +925,7 @@ class Server(object):
                     self.epoll.register(s.fileno(), select.EPOLLIN)
                     self.serversockets_epoll.update({s.fileno(): s})
             except Exception as e:
-                self.print_error("Could not bind socket on port %s: %s." % (port, e))
+                self.print_error("Could not bind socket on port %s:%s: %s." % (self.address, port, e))
                 sys.exit(1)
             del s
             self.print_info("Listening on port %d." % port)
