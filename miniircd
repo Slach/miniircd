@@ -32,6 +32,7 @@ import string
 import statsd
 import tempfile
 import netifaces
+import pyhash
 from platform import platform
 from optparse import OptionParser
 from pympler import tracker
@@ -129,12 +130,13 @@ class Client(object):
         self.nickname = None
         self.user = None
         self.realname = None
+        self.password = None
         (self.host, self.port) = client_socket.getpeername()
         self.__timestamp = time.time()
         self.__readbuffer = ""
         self.__writebuffer = ""
         self.__sent_ping = False
-        if self.server.password:
+        if self.server.auth_salt:
             self.__handle_command = self.__pass_handler
         else:
             self.__handle_command = self.__registration_handler
@@ -189,13 +191,18 @@ class Client(object):
             if len(arguments) == 0:
                 self.reply_461("PASS")
             else:
-                if arguments[0].lower() == server.password:
-                    self.__handle_command = self.__registration_handler
-                else:
-                    self.reply("464 :Password incorrect")
+                self.password = arguments[0].lower()
+                self.__handle_command = self.__registration_handler
         elif command == "QUIT":
             self.disconnect("Client quit")
             return
+
+    @classmethod
+    def is_valid_password(cls, password, auth_salt, nickname):
+        hasher = pyhash.city_64()
+        player_id = cls.__valid_nickname_regexp.match(nickname).group(2)
+        sign_data = '&'.join(('{:0>65}'.format(player_id), auth_salt))
+        return password == str(hasher(str(sign_data)))
 
     def __registration_handler(self, command, arguments):
         server = self.server
@@ -208,6 +215,9 @@ class Client(object):
                 self.reply("433 * %s :Nickname is already in use" % nick)
             elif not self.__valid_nickname_regexp.match(nick):
                 self.reply("432 * %s :Erroneous nickname" % nick)
+            elif self.server.auth_salt and not self.is_valid_password(self.password, self.server.auth_salt, nick):
+                self.__handle_command = self.__pass_handler
+                self.reply("464 :Password incorrect")
             else:
                 self.nickname = nick
                 server.client_changed_nickname(self, None)
@@ -653,7 +663,6 @@ class Client(object):
 class Server(object):
     def __init__(self, options):
         self.ports = options.ports
-        self.password = options.password
         self.ssl_pem_file = options.ssl_pem_file
         self.motdfile = options.motd
         self.verbose = options.verbose
@@ -662,6 +671,7 @@ class Server(object):
         self.chroot = options.chroot
         self.setuid = options.setuid
         self.statedir = options.statedir
+        self.auth_salt = options.auth_salt
 
         if self.ssl_pem_file:
             self.ssl = __import__("ssl")
@@ -902,7 +912,6 @@ class Server(object):
             if x in self.clients:
                 self.clients[x].socket_writable_notification()
 
-
     def start(self):
         self.serversockets = []
         self.serversockets_epoll = {}
@@ -1014,10 +1023,6 @@ def main(argv):
         metavar="FILE",
         help="enable SSL and use FILE as the .pem certificate+key")
     op.add_option(
-        "-p", "--password",
-        metavar="X",
-        help="require connection password X; default: no password")
-    op.add_option(
         "--ports",
         metavar="X",
         help="listen to ports X (a list separated by comma or whitespace);"
@@ -1034,6 +1039,10 @@ def main(argv):
         "--verbose",
         action="store_true",
         help="be verbose (print some progress messages to stdout)")
+    op.add_option(
+        "--auth-salt",
+        metavar="X",
+        help="require connection auth-salt X; default: no auth-salt")
     if os.name == "posix":
         op.add_option(
             "--chroot",
