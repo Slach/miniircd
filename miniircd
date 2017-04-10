@@ -627,9 +627,9 @@ class Client(object):
             timestamp=time.time(),
             full_time=time.strftime('%Y-%m-%d %H:%M:%S'),
             nickname=self.nickname,
-            message=message.trim(" \t\r\n").replace("\n"," ").replace("\r"," ")
+            message=message.strip(" \t\r\n").replace("\n"," ").replace("\r"," ")
         )
-        f.write(msg.trim(" \t\r\n").replace("\n"," ").replace("\r"," ") + '\n')
+        f.write(msg.strip(" \t\r\n").replace("\n"," ").replace("\r"," ") + '\n')
         f.close()
 
     def message_related(self, msg, include_self=False):
