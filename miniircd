@@ -41,6 +41,8 @@ VERSION = "1.4-%s" % zlib.crc32(open('miniircd', 'rb').read())
 
 VALID_CHANNEL_NAME_REGEXP = re.compile(r"^#team_(\d{0,50})$")
 
+VALID_CHANNEL_NAME_REGEXP = re.compile(r"^#team_(\d{0,50})$")
+
 
 def create_directory(path):
     if not os.path.isdir(path):
@@ -120,7 +122,7 @@ class Client(object):
     __linesep_regexp = re.compile(r"\r?\n")
     # The RFC limit for nicknames is 9 characters, but what the heck.
     __valid_nickname_regexp = re.compile(
-        r"^(facebook|Melesta):([0-9]{0,50})$")
+        r"^(facebook|Melesta|SystemBot):([0-9]{0,50})$")
     __valid_channelname_regexp = VALID_CHANNEL_NAME_REGEXP
 
     def __init__(self, server, client_socket):
@@ -198,10 +200,11 @@ class Client(object):
             return
 
     @classmethod
-    def is_valid_password(cls, password, auth_salt, nickname):
+    def is_valid_password(cls, password, nickname, auth_salt, auth_bot_salt=None):
         hasher = pyhash.city_64()
+        salt = auth_salt if not nickname.startswith('SystemBot') or not auth_bot_salt else auth_bot_salt
         player_id = cls.__valid_nickname_regexp.match(nickname).group(2)
-        sign_data = '&'.join(('{:0>65}'.format(player_id), auth_salt))
+        sign_data = '&'.join(('{:0>65}'.format(player_id), salt))
         return password == str(hasher(str(sign_data)))
 
     def __registration_handler(self, command, arguments):
@@ -215,7 +218,9 @@ class Client(object):
                 self.reply("433 * %s :Nickname is already in use" % nick)
             elif not self.__valid_nickname_regexp.match(nick):
                 self.reply("432 * %s :Erroneous nickname" % nick)
-            elif self.server.auth_salt and not self.is_valid_password(self.password, self.server.auth_salt, nick):
+            elif self.server.auth_salt and not self.is_valid_password(self.password, nick,
+                                                                      self.server.auth_salt,
+                                                                      self.server.auth_bot_salt):
                 self.__handle_command = self.__pass_handler
                 self.reply("464 :Password incorrect")
             else:
@@ -672,6 +677,7 @@ class Server(object):
         self.setuid = options.setuid
         self.statedir = options.statedir
         self.auth_salt = options.auth_salt
+        self.auth_bot_salt = options.auth_bot_salt
 
         if self.ssl_pem_file:
             self.ssl = __import__("ssl")
@@ -1046,6 +1052,10 @@ def main(argv):
         "--auth-salt",
         metavar="X",
         help="require connection auth-salt X; default: no auth-salt")
+    op.add_option(
+        "--auth-bot-salt",
+        metavar="X",
+        help="require connection auth-bot-salt X; default: no auth-bot-salt")
     if os.name == "posix":
         op.add_option(
             "--chroot",
