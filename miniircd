@@ -188,7 +188,6 @@ class Client(object):
             self.__handle_command(command, arguments)
 
     def __pass_handler(self, command, arguments):
-        server = self.server
         if command == "PASS":
             if len(arguments) == 0:
                 self.reply_461("PASS")
@@ -857,7 +856,7 @@ class Server(object):
                 self.statsd.incr('socket_accept', 1)
                 self.statsd.gauge('clients', len(self.clients))
             return True
-        except socket.error as e:
+        except socket.error:
             try:
                 conn.close()
             except:
