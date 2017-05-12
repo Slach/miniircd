@@ -37,7 +37,7 @@ from platform import platform
 from optparse import OptionParser
 from pympler import tracker
 
-VERSION = "1.4-%s" % zlib.crc32(open('miniircd','rb').read())
+VERSION = "1.4-%s" % zlib.crc32(open('miniircd', 'rb').read())
 
 VALID_CHANNEL_NAME_REGEXP = re.compile(r"^#team_(\d{0,50})$")
 
@@ -627,9 +627,9 @@ class Client(object):
             timestamp=time.time(),
             full_time=time.strftime('%Y-%m-%d %H:%M:%S'),
             nickname=self.nickname,
-            message=message.strip(" \t\r\n").replace("\n"," ").replace("\r"," ")
+            message=message.strip(" \t\r\n").replace("\n", " ").replace("\r", " ")
         )
-        f.write(msg.strip(" \t\r\n").replace("\n"," ").replace("\r"," ") + '\n')
+        f.write(msg.strip(" \t\r\n").replace("\n", " ").replace("\r", " ") + '\n')
         f.close()
 
     def message_related(self, msg, include_self=False):
@@ -681,17 +681,19 @@ class Server(object):
             self.ssl_pem_file = os.path.abspath(self.ssl_pem_file)
         # else: might exist in the chroot jail, so just continue
 
+        self.address = []
         if options.listen:
-            if '_' == options.listen[0] and '_' == options.listen[-1]:
-                iface, proto = options.listen.replace('_','').split(':',1)
-                proto = netifaces.AF_INET6 if proto=='ipv6' else netifaces.AF_INET
-                self.address = netifaces.ifaddresses(iface)[proto][0]['addr']
-            else:
-                self.address = socket.gethostbyname(options.listen)
+            for listen in options.listen.split(','):
+                if '_' == listen[0] and '_' == listen[-1]:
+                    iface, proto = listen.replace('_', '').split(':', 1)
+                    proto = netifaces.AF_INET6 if proto == 'ipv6' else netifaces.AF_INET
+                    self.address.append(netifaces.ifaddresses(iface)[proto][0]['addr'])
+                else:
+                    self.address.append(socket.gethostbyname(listen))
         else:
-            self.address = ""
+            self.address.append("")
         server_name_limit = 63  # From the RFC.
-        self.name = socket.getfqdn(self.address)[:server_name_limit]
+        self.name = socket.getfqdn(self.address[0])[:server_name_limit]
 
         host = 'localhost'
         port = 8125
@@ -723,7 +725,7 @@ class Server(object):
             create_directory(self.statedir)
         self.serversockets = []
         self.serversockets_epoll = []
-        self.epoll=None
+        self.epoll = None
 
     def daemonize(self):
         try:
@@ -921,23 +923,25 @@ class Server(object):
         else:
             poller = self.poller_select
 
-        for port in self.ports:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            try:
-                s.bind((self.address, port))
-                s.listen(5)
-                self.serversockets.append(s)
+        for address in self.address:
+            for port in self.ports:
+                proto = socket.AF_INET6 if ':' in address else socket.AF_INET
+                s = socket.socket(proto, socket.SOCK_STREAM)
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                try:
+                    s.bind((address, port))
+                    s.listen(5)
+                    self.serversockets.append(s)
 
-                if self.epoll:
-                    s.setblocking(0)
-                    self.epoll.register(s.fileno(), select.EPOLLIN)
-                    self.serversockets_epoll.update({s.fileno(): s})
-            except Exception as e:
-                self.print_error("Could not bind socket on port %s:%s: %s." % (self.address, port, e))
-                sys.exit(1)
-            del s
-            self.print_info("Listening on port %d." % port)
+                    if self.epoll:
+                        s.setblocking(0)
+                        self.epoll.register(s.fileno(), select.EPOLLIN)
+                        self.serversockets_epoll.update({s.fileno(): s})
+                except Exception as e:
+                    self.print_error("Could not bind socket on port %s:%s: %s." % (self.address, port, e))
+                    sys.exit(1)
+                del s
+                self.print_info("Listening on %s:%d." % (address, port))
         if self.chroot:
             os.chdir(self.chroot)
             os.chroot(self.chroot)
@@ -948,7 +952,6 @@ class Server(object):
             self.print_info("Setting uid:gid to %s:%s" % (
                 self.setuid[0], self.setuid[1]
             ))
-
 
         last_aliveness_check = time.time()
         tr = None if not self.debug else tracker.SummaryTracker()
