@@ -940,7 +940,7 @@ class Server(object):
         for address in self.address:
             for port in self.ports:
                 proto = socket.AF_INET6 if ':' in address else socket.AF_INET
-                s = socket.socket(proto, socket.SOCK_STREAM, family=proto)
+                s = socket.socket(proto, socket.SOCK_STREAM)
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 s.bind((address, port))
                 s.listen(5)
