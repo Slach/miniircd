@@ -940,20 +940,16 @@ class Server(object):
         for address in self.address:
             for port in self.ports:
                 proto = socket.AF_INET6 if ':' in address else socket.AF_INET
-                s = socket.socket(proto, socket.SOCK_STREAM)
+                s = socket.socket(proto, socket.SOCK_STREAM, family=proto)
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                try:
-                    s.bind((address, port))
-                    s.listen(5)
-                    self.serversockets.append(s)
+                s.bind((address, port))
+                s.listen(5)
+                self.serversockets.append(s)
 
-                    if self.epoll:
-                        s.setblocking(0)
-                        self.epoll.register(s.fileno(), select.EPOLLIN)
-                        self.serversockets_epoll.update({s.fileno(): s})
-                except Exception as e:
-                    self.print_error("Could not bind socket on port %s:%s: %s." % (address, port, e))
-                    sys.exit(1)
+                if self.epoll:
+                    s.setblocking(0)
+                    self.epoll.register(s.fileno(), select.EPOLLIN)
+                    self.serversockets_epoll.update({s.fileno(): s})
                 del s
                 self.print_info("Listening on %s:%d." % (address, port))
         if self.chroot:
