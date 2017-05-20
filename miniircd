@@ -692,8 +692,12 @@ class Server(object):
                 try:
                     if '_' == listen[0] and '_' == listen[-1]:
                         iface, proto = listen.replace('_', '').split(':', 1)
-                        proto = netifaces.AF_INET6 if proto == 'ipv6' else netifaces.AF_INET
-                        self.address.append(netifaces.ifaddresses(iface)[proto][0]['addr'])
+                        if proto == 'ipv6':
+                            self.address.append(
+                                netifaces.ifaddresses(iface)[netifaces.AF_INET6][0]['addr'].replace('%'+iface,'')
+                            )
+                        else:
+                            self.address.append(netifaces.ifaddresses(iface)[netifaces.AF_INET][0]['addr'])
                     else:
                         self.address.append(socket.gethostbyname(listen))
                 except socket.gaierror:
