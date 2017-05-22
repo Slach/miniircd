@@ -935,7 +935,7 @@ class Server(object):
 
         for address in self.address:
             for port in self.ports:
-                if '%' in address:
+                if ':' in address:
                     for res in socket.getaddrinfo(address, port, socket.AF_INET6, socket.SOCK_STREAM, socket.SOL_TCP):
                         af, socktype, proto, canonname, sa = res
                         s = socket.socket(af, socktype, proto)
