@@ -41,8 +41,6 @@ VERSION = "1.4-%s" % zlib.crc32(open('miniircd', 'rb').read())
 
 VALID_CHANNEL_NAME_REGEXP = re.compile(r"^#team_(\d{0,50})$")
 
-VALID_CHANNEL_NAME_REGEXP = re.compile(r"^#team_(\d{0,50})$")
-
 
 def create_directory(path):
     if not os.path.isdir(path):
@@ -693,9 +691,7 @@ class Server(object):
                     if '_' == listen[0] and '_' == listen[-1]:
                         iface, proto = listen.replace('_', '').split(':', 1)
                         if proto == 'ipv6':
-                            self.address.append(
-                                netifaces.ifaddresses(iface)[netifaces.AF_INET6][0]['addr'].replace('%'+iface,'')
-                            )
+                            self.address.append(netifaces.ifaddresses(iface)[netifaces.AF_INET6][0]['addr'])
                         else:
                             self.address.append(netifaces.ifaddresses(iface)[netifaces.AF_INET][0]['addr'])
                     else:
@@ -939,12 +935,20 @@ class Server(object):
 
         for address in self.address:
             for port in self.ports:
-                proto = socket.AF_INET6 if ':' in address else socket.AF_INET
-                s = socket.socket(proto, socket.SOCK_STREAM)
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                s.bind((address, port))
-                s.listen(5)
-                self.serversockets.append(s)
+                if '%' in address:
+                    for res in socket.getaddrinfo(address, port, socket.AF_INET6, socket.SOCK_STREAM, socket.SOL_TCP):
+                        af, socktype, proto, canonname, sa = res
+                        s = socket.socket(af, socktype, proto)
+                        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                        s.bind(sa)
+                        s.listen(5)
+                        self.serversockets.append(s)
+                else:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    s.bind((address, port))
+                    s.listen(5)
+                    self.serversockets.append(s)
 
                 if self.epoll:
                     s.setblocking(0)
